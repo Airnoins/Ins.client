@@ -318,6 +318,7 @@ public void ClientWelcome(int client)
 		PrintToConsole(client, "检测用户为首次加载,正在向云端上传数据");
 
 		SaveClientInfoDB(client);
+		SaveClientInfo(client);
 		return;
 	}
 
