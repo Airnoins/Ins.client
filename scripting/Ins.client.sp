@@ -169,15 +169,6 @@ public Action Event_PlayerConnectFull(Event hEvent, const char[] sName, bool bDo
 {
 	int client = GetClientOfUserId(GetEventInt(hEvent, "userid"));
 
-	if(g_iPlayerId[client] == 0)
-	{
-		Hint(client, "检测用户为首次加载,正在向云端上传数据");
-		Chat(client, "检测用户为首次加载,正在向云端上传数据");
-		PrintToConsole(client, "检测用户为首次加载,正在向云端上传数据");
-
-		return Plugin_Continue;
-	}
-
 	//需要欢迎语句
 	if(!g_bWelcome[client])
 	{
@@ -323,6 +314,16 @@ public void ClientWelcome(int client)
 			g_sPermissions[client] = "Member";
 			ReplaceString(buffer, sizeof(buffer), "???", "\x01");
 		}
+	}
+
+	if(g_iPlayerId[client] == 0)
+	{
+		Hint(client, "检测用户为首次加载,正在向云端上传数据");
+		Chat(client, "检测用户为首次加载,正在向云端上传数据");
+		PrintToConsole(client, "检测用户为首次加载,正在向云端上传数据");
+
+		SaveClientInfoDB(client);
+		return;
 	}
 
 	if(g_bClientAuth[client])
