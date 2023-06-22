@@ -101,7 +101,6 @@ public void OnClientPutInServer(int client)
 public void OnClientDisconnect(int client)
 {
 	ChatAll("\x04%N \x01已离开游戏", client);
-	ClearDisconnectPlayerInfo(client);
 
 	//Get client_LastAppeared
 	if(g_iDBStatus == 4)
@@ -111,6 +110,7 @@ public void OnClientDisconnect(int client)
 		FormatEx(Query, sizeof(Query), "UPDATE `Client_Information` SET `LastAppeared`='%s' WHERE `SteamId`='%s'", g_sCurrentTime, g_sSteamId[client]);
 		SQL_FastQuery(clientDB, Query);
 	}
+	ClearDisconnectPlayerInfo(client);
 }
 
 public void OnMapEnd()
