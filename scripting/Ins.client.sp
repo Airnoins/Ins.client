@@ -5,7 +5,7 @@
 //////////////////////////////
 //    PLUGIN DEFINITION     //
 //////////////////////////////
-#define PLUGIN_NAME         "Client - redux(Bate)"
+#define PLUGIN_NAME         "Client - redux(Beta)"
 #define PLUGIN_AUTHOR       "Ins"
 #define PLUGIN_DESCRIPTION  "Client-related features(Only MySql is supported)"
 #define PLUGIN_VERSION      "1.5.0"
@@ -168,6 +168,15 @@ public Action Event_RoundEnd(Event hEvent, const char[] sName, bool bDontBroadca
 public Action Event_PlayerConnectFull(Event hEvent, const char[] sName, bool bDontBroadcast)
 {
 	int client = GetClientOfUserId(GetEventInt(hEvent, "userid"));
+
+	if(g_iPlayerId[client] == 0)
+	{
+		Hint(client, "检测用户为首次加载,正在向云端上传数据");
+		Chat(client, "检测用户为首次加载,正在向云端上传数据");
+		PrintToConsole(client, "检测用户为首次加载,正在向云端上传数据");
+
+		return Plugin_Continue;
+	}
 
 	//需要欢迎语句
 	if(!g_bWelcome[client])
