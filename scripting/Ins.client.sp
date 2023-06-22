@@ -113,11 +113,6 @@ public void OnClientDisconnect(int client)
 	ClearDisconnectPlayerInfo(client);
 }
 
-public void OnMapEnd()
-{
-	CloseHandle(Point_Timer);
-}
-
 public void Client_CreateTables()
 {
 	char sConnectDriverDB[16];
