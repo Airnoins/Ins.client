@@ -380,54 +380,13 @@ public bool UpdateClientPoint(int client)
 public bool UpdateClientLevel(int client)
 {
 	char Query[512];
-	FormatEx(Query, sizeof(Query), "SELECT `Point` FROM `Client_Information` WHERE `SteamId`='%s'", g_sSteamId[client]);
+	FormatEx(Query, sizeof(Query), "SELECT `Point`, FLOOR((`Point`/60)) FROM `Client_Information` WHERE `SteamId`='%s'", g_sSteamId[client]);
 	DBResultSet rs = SQL_Query(clientDB, Query);
 
-	if(SQL_FetchRow(rs))
+	while(SQL_FetchRow(rs))
 	{
 		g_iPoint[client] = SQL_FetchInt(rs, 0);
-	}
-
-	if(g_iPoint[client] >= 60 && g_iPoint[client] < 120)
-	{
-		//一小时玩家
-		g_iLevel[client] = 1;
-	}
-	else if(g_iPoint[client] >= 120 && g_iPoint[client] < 180)
-	{
-		g_iLevel[client] = 2;
-	}
-	else if(g_iPoint[client] >= 180 && g_iPoint[client] < 240)
-	{
-		g_iLevel[client] = 3;
-	}
-	else if(g_iPoint[client] >= 240 && g_iPoint[client] < 300)
-	{
-		g_iLevel[client] = 4;
-	}
-	else if(g_iPoint[client] >= 300 && g_iPoint[client] < 360)
-	{
-		g_iLevel[client] = 5;
-	}
-	else if(g_iPoint[client] >= 360 && g_iPoint[client] < 420)
-	{
-		g_iLevel[client] = 6;
-	}
-	else if(g_iPoint[client] >= 420 && g_iPoint[client] < 480)
-	{
-		g_iLevel[client] = 7;
-	}
-	else if(g_iPoint[client] >= 480 && g_iPoint[client] < 540)
-	{
-		g_iLevel[client] = 8;
-	}
-	else if(g_iPoint[client] >= 540 && g_iPoint[client] < 600)
-	{
-		g_iLevel[client] = 9;
-	}
-	else if(g_iPoint[client] >= 600)
-	{
-		g_iLevel[client] = 10;
+		g_iLevel[client] = SQL_FetchInt(rs, 1);
 	}
 
 	FormatEx(Query, sizeof(Query), "UPDATE `Client_Information` SET `Level`='%d' WHERE `SteamId`='%s'", g_iLevel[client], g_sSteamId[client]);
