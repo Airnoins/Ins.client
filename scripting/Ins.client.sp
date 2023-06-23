@@ -8,7 +8,7 @@
 #define PLUGIN_NAME         "Client - redux(Beta)"
 #define PLUGIN_AUTHOR       "Ins"
 #define PLUGIN_DESCRIPTION  "Client-related features(Only MySql is supported)"
-#define PLUGIN_VERSION      "1.5.0"
+#define PLUGIN_VERSION      "1.5.1"
 #define PLUGIN_URL          "https://space.bilibili.com/442385547"
 
 public Plugin myinfo =
@@ -82,20 +82,15 @@ public void OnPluginStart()
 	SMUtils_SetChatConSnd(false);
 	SMUtils_SetTextDest(HUD_PRINTCENTER);
 
+	HookEvent("round_start", Event_RoundStart, EventHookMode_Post);
+	HookEventEx("player_connect_full", Event_PlayerConnectFull, EventHookMode_Post);
+
 	if(Point_Timer == null)
 	{
 		Point_Timer = CreateTimer(1.00, Point_TimerCallBack, _, TIMER_REPEAT);
 	}
 
 	Database.Connect(Client_ConnectCallBack, client_DB);
-}
-
-public void OnClientPutInServer(int client)
-{
-	SaveClientInfo(client);
-
-	HookEvent("round_end", Event_RoundEnd);
-	HookEventEx("player_connect_full", Event_PlayerConnectFull);
 }
 
 public void OnClientDisconnect(int client)
@@ -105,10 +100,12 @@ public void OnClientDisconnect(int client)
 	//Get client_LastAppeared
 	if(g_iDBStatus == 4)
 	{
-		char Query[512];
+		char Query[256];
 		GetDate(0, "%Y-%m-%d %H:%M:%S", g_sCurrentTime, sizeof(g_sCurrentTime));
 		FormatEx(Query, sizeof(Query), "UPDATE `Client_Information` SET `LastAppeared`='%s' WHERE `SteamId`='%s'", g_sCurrentTime, g_sSteamId[client]);
 		SQL_FastQuery(clientDB, Query);
+
+		UpdateClientLevel(client);
 	}
 	ClearDisconnectPlayerInfo(client);
 }
@@ -149,14 +146,16 @@ public void Client_CreateTables()
 //         EVENT            //
 //////////////////////////////
 
-public Action Event_RoundEnd(Event hEvent, const char[] sName, bool bDontBroadcast)
+public Action Event_RoundStart(Event hEvent, const char[] sName, bool bDontBroadcast)
 {
-	int client = GetClientOfUserId(GetEventInt(hEvent, "userid"));
-
-	if(ClientIsValid(client))
+	for(int i = 1; i < MaxClients; i++)
 	{
-		SaveClientInfo(client);
+		if(ClientIsValid(i) && g_iPlayerId[i] != 0)
+		{
+			SaveClientInfo(i);
+		}
 	}
+
 	return Plugin_Continue;
 }
 
@@ -167,6 +166,16 @@ public Action Event_PlayerConnectFull(Event hEvent, const char[] sName, bool bDo
 	//需要欢迎语句
 	if(!g_bWelcome[client])
 	{
+		SaveClientInfo(client);
+		if(g_iPlayerId[client] == 0)
+		{
+			Chat(client, "检测用户为首次加载,正在向云端上传数据");
+
+			SaveClientInfoDB(client);
+		}
+		UpdateClientLevel(client);
+		SaveClientInfo(client);
+
 		ClientWelcome(client);
 		g_bWelcome[client] = true;
 	}
@@ -219,7 +228,7 @@ public void SaveClientInfo(int client)
 	if(g_iDBStatus == 4 && IsPlayer(client))
 	{
 		char Query[512];
-		FormatEx(Query, sizeof(Query),"SELECT `playerid`, `Jointime`, `Authentication`, `Point`, `Level` FROM `Client_Information` WHERE `SteamId`='%s'", g_sSteamId[client]);
+		FormatEx(Query, sizeof(Query),"SELECT `playerid`, `Jointime`, `Authentication` FROM `Client_Information` WHERE `SteamId`='%s'", g_sSteamId[client]);
 
 		DBResultSet rs = null;
 		rs = SQL_Query(clientDB, Query);
@@ -228,9 +237,10 @@ public void SaveClientInfo(int client)
 		{
 			g_iPlayerId[client] = SQL_FetchInt(rs, 0);
 			SQL_FetchString(rs, 1, g_sJoinTime[client], LENGTH_64);
-			SQL_FetchString(rs, 2, g_sAuthentication[client], LENGTH_64);
-			g_iPoint[client] = SQL_FetchInt(rs, 3);
-			g_iLevel[client] = SQL_FetchInt(rs, 4);
+			if(StrEqual(g_sAuthentication[client], ""))
+			{
+				SQL_FetchString(rs, 2, g_sAuthentication[client], LENGTH_64);
+			}
 		}
 	}
 
@@ -311,17 +321,6 @@ public void ClientWelcome(int client)
 		}
 	}
 
-	if(g_iPlayerId[client] == 0)
-	{
-		Hint(client, "检测用户为首次加载,正在向云端上传数据");
-		Chat(client, "检测用户为首次加载,正在向云端上传数据");
-		PrintToConsole(client, "检测用户为首次加载,正在向云端上传数据");
-
-		SaveClientInfoDB(client);
-		SaveClientInfo(client);
-		return;
-	}
-
 	if(g_bClientAuth[client])
 	{
 		StrCat(buffer, sizeof(buffer), " \x03认证\x08[\x0B%s\x08] -");
@@ -398,32 +397,65 @@ public bool UpdateClientLevel(int client)
 	char Query[512];
 	FormatEx(Query, sizeof(Query), "SELECT `Point` FROM `Client_Information` WHERE `SteamId`='%s'", g_sSteamId[client]);
 	DBResultSet rs = SQL_Query(clientDB, Query);
-	int Point = SQL_FetchInt(rs, 0);
-	int Level = 0;
 
-	if(Point >= 60 && Point < 120)
+	if(SQL_FetchRow(rs))
+	{
+		g_iPoint[client] = SQL_FetchInt(rs, 0);
+	}
+
+	if(g_iPoint[client] < 60)
+	{
+		g_sAuthentication[client] = "萌新认证";
+		FormatEx(Query, sizeof(Query), "UPDATE `Client_Information` SET `Authentication`='%s' WHERE `SteamId`='%s'", g_sAuthentication[client], g_sSteamId[client]);
+		SQL_FastQuery(clientDB, Query);
+	}
+
+	if(g_iPoint[client] >= 60 && g_iPoint[client] < 120)
 	{
 		//一小时玩家
-		Level = 1;
+		g_iLevel[client] = 1;
 	}
-	else if(Point >= 120 && Point < 180)
+	else if(g_iPoint[client] >= 120 && g_iPoint[client] < 180)
 	{
-		Level = 2;
+		g_iLevel[client] = 2;
 	}
-	else if(Point >= 180 && Point < 240)
+	else if(g_iPoint[client] >= 180 && g_iPoint[client] < 240)
 	{
-		Level = 3;
+		g_iLevel[client] = 3;
 	}
-	else if(Point >= 240 && Point < 300)
+	else if(g_iPoint[client] >= 240 && g_iPoint[client] < 300)
 	{
-		Level = 4;
+		g_iLevel[client] = 4;
 	}
-	else if(Point >= 300 && Point < 360)
+	else if(g_iPoint[client] >= 300 && g_iPoint[client] < 360)
 	{
-		Level = 5;
+		g_iLevel[client] = 5;
+	}
+	else if(g_iPoint[client] >= 360 && g_iPoint[client] < 420)
+	{
+		g_iLevel[client] = 6;
+	}
+	else if(g_iPoint[client] >= 420 && g_iPoint[client] < 480)
+	{
+		g_iLevel[client] = 7;
+	}
+	else if(g_iPoint[client] >= 480 && g_iPoint[client] < 540)
+	{
+		g_iLevel[client] = 8;
+	}
+	else if(g_iPoint[client] >= 540 && g_iPoint[client] < 600)
+	{
+		g_iLevel[client] = 9;
+	}
+	else if(g_iPoint[client] >= 600)
+	{
+		g_iLevel[client] = 10;
+		g_sAuthentication[client] = "资深高玩";
+		FormatEx(Query, sizeof(Query), "UPDATE `Client_Information` SET `Authentication`='%s' WHERE `SteamId`='%s'", g_sAuthentication[client], g_sSteamId[client]);
+		SQL_FastQuery(clientDB, Query);
 	}
 
-	FormatEx(Query, sizeof(Query), "UPDATE `Client_Information` SET `Level`='%d' WHERE `SteamId`='%s'", Level, g_sSteamId[client]);
+	FormatEx(Query, sizeof(Query), "UPDATE `Client_Information` SET `Level`='%d' WHERE `SteamId`='%s'", g_iLevel[client], g_sSteamId[client]);
 	if(SQL_FastQuery(clientDB, Query))
 	{
 		return true;
