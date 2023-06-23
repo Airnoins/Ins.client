@@ -146,6 +146,7 @@ public void Client_CreateTables()
 public Action Event_PlayerConnectFull(Event hEvent, const char[] sName, bool bDontBroadcast)
 {
 	int client = GetClientOfUserId(GetEventInt(hEvent, "userid"));
+	GetClientAuthId(client, AuthId_Steam2, g_sSteamId[client], LENGTH_64);
 
 	if(IsPlayer(client))
 	{
