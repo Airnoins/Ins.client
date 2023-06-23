@@ -8,7 +8,7 @@
 #define PLUGIN_NAME         "Client - redux(Beta)"
 #define PLUGIN_AUTHOR       "Ins"
 #define PLUGIN_DESCRIPTION  "Client-related features(Only MySql is supported)"
-#define PLUGIN_VERSION      "1.5.1"
+#define PLUGIN_VERSION      "1.5.2"
 #define PLUGIN_URL          "https://space.bilibili.com/442385547"
 
 public Plugin myinfo =
@@ -27,6 +27,7 @@ public Plugin myinfo =
 #include <sourcemod>
 #include <geoip>
 #include <smutils>
+#include <sdkhooks>
 
 //////////////////////////////
 //          DEFINE          //
@@ -54,9 +55,7 @@ char g_sPermissions[MAXPLAYERS + 1][LENGTH_64];
 char g_sAuthentication[MAXPLAYERS + 1][LENGTH_64];
 char g_sCountry[MAXPLAYERS + 1][16];
 
-char g_sCurrentTime[32];
-
-bool g_bWelcome[MAXPLAYERS + 1] = {false, ...};
+bool g_bIsPlayer[MAXPLAYERS + 1] = {false, ...};
 bool g_bClientAuth[MAXPLAYERS + 1] = {false, ...};
 bool g_bDeveloper[MAXPLAYERS + 1] = {false, ...};
 
@@ -82,7 +81,6 @@ public void OnPluginStart()
 	SMUtils_SetChatConSnd(false);
 	SMUtils_SetTextDest(HUD_PRINTCENTER);
 
-	HookEvent("round_start", Event_RoundStart, EventHookMode_Post);
 	HookEventEx("player_connect_full", Event_PlayerConnectFull, EventHookMode_Post);
 
 	if(Point_Timer == null)
@@ -101,13 +99,12 @@ public void OnClientDisconnect(int client)
 	if(g_iDBStatus == 4)
 	{
 		char Query[256];
-		GetDate(0, "%Y-%m-%d %H:%M:%S", g_sCurrentTime, sizeof(g_sCurrentTime));
-		FormatEx(Query, sizeof(Query), "UPDATE `Client_Information` SET `LastAppeared`='%s' WHERE `SteamId`='%s'", g_sCurrentTime, g_sSteamId[client]);
+		FormatEx(Query, sizeof(Query), "UPDATE `Client_Information` SET `LastAppeared`=NOW() WHERE `SteamId`='%s'", g_sSteamId[client]);
 		SQL_FastQuery(clientDB, Query);
 
 		UpdateClientLevel(client);
+		g_bIsPlayer[client] = false;
 	}
-	ClearDisconnectPlayerInfo(client);
 }
 
 public void Client_CreateTables()
@@ -146,39 +143,34 @@ public void Client_CreateTables()
 //         EVENT            //
 //////////////////////////////
 
-public Action Event_RoundStart(Event hEvent, const char[] sName, bool bDontBroadcast)
-{
-	for(int i = 1; i < MaxClients; i++)
-	{
-		if(ClientIsValid(i) && g_iPlayerId[i] != 0)
-		{
-			SaveClientInfo(i);
-		}
-	}
-
-	return Plugin_Continue;
-}
-
 public Action Event_PlayerConnectFull(Event hEvent, const char[] sName, bool bDontBroadcast)
 {
 	int client = GetClientOfUserId(GetEventInt(hEvent, "userid"));
 
-	//需要欢迎语句
-	if(!g_bWelcome[client])
+	if(IsPlayer(client))
 	{
-		SaveClientInfo(client);
-		if(g_iPlayerId[client] == 0)
-		{
-			Chat(client, "检测用户为首次加载,正在向云端上传数据");
-
-			SaveClientInfoDB(client);
-		}
-		UpdateClientLevel(client);
-		SaveClientInfo(client);
-
-		ClientWelcome(client);
-		g_bWelcome[client] = true;
+		g_bIsPlayer[client] = true;
 	}
+
+	if(!g_bIsPlayer[client])
+	{
+		Chat(client, "检测用户为首次加载,正在向云端上传数据");
+
+		SaveClientInfo(client);
+		SaveClientInfoDB(client, true);
+	}
+	UpdateClientLevel(client);
+	SaveClientInfo(client);
+
+	SDKHook(client, SDKHook_SpawnPost, OnEntitySpawnPost);
+
+	return Plugin_Continue;
+}
+
+public Action OnEntitySpawnPost(int client)
+{
+	ClientWelcome(client);
+	SDKUnhook(client, SDKHook_SpawnPost, OnEntitySpawnPost);
 
 	return Plugin_Continue;
 }
@@ -225,10 +217,19 @@ public void SaveClientInfo(int client)
 	GetClientIP(client, g_sClientIP[client], LENGTH_64);
 	GeoipCountryEx(g_sClientIP[client], g_sCountry[client], 16, client);
 
-	if(g_iDBStatus == 4 && IsPlayer(client))
+	if(GetUserAdmin(client) != INVALID_ADMIN_ID)
+	{
+		g_sPermissions[client] = "Admin";
+	}
+	else
+	{
+		g_sPermissions[client] = "Member";
+	}
+
+	if(g_iDBStatus == 4 && g_bIsPlayer[client])
 	{
 		char Query[512];
-		FormatEx(Query, sizeof(Query),"SELECT `playerid`, `Jointime`, `Authentication` FROM `Client_Information` WHERE `SteamId`='%s'", g_sSteamId[client]);
+		FormatEx(Query, sizeof(Query),"SELECT `Playerid`, `Jointime`, `Authentication` FROM `Client_Information` WHERE `SteamId`='%s'", g_sSteamId[client]);
 
 		DBResultSet rs = null;
 		rs = SQL_Query(clientDB, Query);
@@ -237,33 +238,31 @@ public void SaveClientInfo(int client)
 		{
 			g_iPlayerId[client] = SQL_FetchInt(rs, 0);
 			SQL_FetchString(rs, 1, g_sJoinTime[client], LENGTH_64);
-			if(StrEqual(g_sAuthentication[client], ""))
-			{
-				SQL_FetchString(rs, 2, g_sAuthentication[client], LENGTH_64);
-			}
+			SQL_FetchString(rs, 2, g_sAuthentication[client], LENGTH_64);
 		}
-	}
 
-	if(!StrEqual(g_sAuthentication[client], "null"))
-	{
-		if(IsDeveloper(g_sAuthentication[client]))
+		if(!StrEqual(g_sAuthentication[client], "null"))
 		{
-			g_bDeveloper[client] = true;
+			if(IsDeveloper(g_sAuthentication[client]))
+			{
+				g_sPermissions[client] = "Developer";
+				g_bDeveloper[client] = true;
+			}
+			g_bClientAuth[client] = true;
 		}
-		g_bClientAuth[client] = true;
 	}
 }
 
-public void SaveClientInfoDB(int client)
+public void SaveClientInfoDB(int client, bool insert)
 {
 	if(g_iDBStatus == 4)
 	{
 		char Query[512];
-		GetDate(0, "%Y-%m-%d %H:%M:%S", g_sCurrentTime, sizeof(g_sCurrentTime));
-		if(!IsPlayer(client))
+		if(insert)
 		{
-			FormatEx(Query, sizeof(Query), "INSERT INTO `Client_Information` (`Name`, `SteamId`, `Steam64Id`, `IP`, `Permissions`, `Jointime`, `LastAppeared`, `Authentication`, `Point`, `Level`) VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s')", g_sClientName[client], g_sSteamId[client], g_sSteam64Id[client], g_sClientIP[client], "null", g_sCurrentTime, g_sCurrentTime, "null", "0", "0");
+			FormatEx(Query, sizeof(Query), "INSERT INTO `Client_Information` (`Name`, `SteamId`, `Steam64Id`, `IP`, `Permissions`, `Jointime`, `LastAppeared`, `Authentication`, `Point`, `Level`) VALUES ('%s', '%s', '%s', '%s', '%s', NOW(), NOW(), '%s', '%s', '%s')", g_sClientName[client], g_sSteamId[client], g_sSteam64Id[client], g_sClientIP[client], "null", "null", "0", "0");
 			SQL_FastQuery(clientDB, Query);
+			g_bIsPlayer[client] = true;
 		}
 		else
 		{
@@ -279,14 +278,6 @@ public void SaveClientInfoDB(int client)
 				SQL_FetchString(rs, 2, SQLclient_permissions, sizeof(SQLclient_permissions));
 			}
 
-			/* PrintToServer("%s", SQLclient_name);
-			PrintToServer("%s", SQLclient_ip);
-			PrintToServer("%s", SQLclient_permissions);
-
-			PrintToServer("%s", g_sClientName[client]);
-			PrintToServer("%s", g_sClientIP[client]);
-			PrintToServer("%s", g_sPermissions[client]); */
-
 			if(!StrEqual(g_sClientName[client], SQLclient_name) || !StrEqual(g_sPermissions[client], SQLclient_permissions) || !StrEqual(g_sClientIP[client], SQLclient_ip))
 			{
 				FormatEx(Query, sizeof(Query), "UPDATE `Client_Information` SET `Name`='%s', `IP`='%s', `Permissions`='%s' WHERE `SteamId`='%s'", g_sClientName[client], g_sClientIP[client], g_sPermissions[client], g_sSteamId[client]);
@@ -300,25 +291,18 @@ public void ClientWelcome(int client)
 {
 	char buffer[1024];
 	buffer = Welcome_Text;
-
-	if(g_bDeveloper[client])
+	
+	if(StrEqual(g_sPermissions[client], "Developer"))
 	{
-		g_sPermissions[client] = "Developer";
 		ReplaceString(buffer, sizeof(buffer), "???", "\x08");
 	}
-
-	if(!StrEqual(g_sPermissions[client], "Developer"))
+	else if(StrEqual(g_sPermissions[client], "Admin"))
 	{
-		if(GetUserAdmin(client) != INVALID_ADMIN_ID)
-		{
-			g_sPermissions[client] = "Admin";
-			ReplaceString(buffer, sizeof(buffer), "???", "\x05");
-		}
-		else
-		{
-			g_sPermissions[client] = "Member";
-			ReplaceString(buffer, sizeof(buffer), "???", "\x01");
-		}
+		ReplaceString(buffer, sizeof(buffer), "???", "\x05");
+	}
+	else if(StrEqual(g_sPermissions[client], "Member"))
+	{
+		ReplaceString(buffer, sizeof(buffer), "???", "\x01");
 	}
 
 	if(g_bClientAuth[client])
@@ -335,7 +319,7 @@ public void ClientWelcome(int client)
 		ChatAll(buffer, client, g_iPlayerId[client], g_sPermissions[client], g_iPoint[client], g_iLevel[client], g_sCountry[client]);
 	}
 
-	SaveClientInfoDB(client);
+	SaveClientInfoDB(client, false);
 }
 
 public Action command_client(int client, int args)
@@ -367,13 +351,13 @@ stock bool IsDeveloper(const char[] Authentication)
 
 stock bool IsPlayer(int client)
 {
-	char Query[512];
+	char Query[256];
 	FormatEx(Query, sizeof(Query), "SELECT COUNT(1) FROM `Client_Information` WHERE `SteamId`='%s'", g_sSteamId[client]);
-	Handle hQuery = SQL_Query(clientDB, Query);
+	DBResultSet rs = SQL_Query(clientDB, Query);
 
-	if(SQL_FetchRow(hQuery) && hQuery != null)
+	if(SQL_FetchRow(rs))
 	{
-		if(SQL_FetchInt(hQuery, 0) != 0)
+		if(SQL_FetchInt(rs, 0) != 0)
 		{
 			return true;
 		}
@@ -401,13 +385,6 @@ public bool UpdateClientLevel(int client)
 	if(SQL_FetchRow(rs))
 	{
 		g_iPoint[client] = SQL_FetchInt(rs, 0);
-	}
-
-	if(g_iPoint[client] < 60)
-	{
-		g_sAuthentication[client] = "萌新认证";
-		FormatEx(Query, sizeof(Query), "UPDATE `Client_Information` SET `Authentication`='%s' WHERE `SteamId`='%s'", g_sAuthentication[client], g_sSteamId[client]);
-		SQL_FastQuery(clientDB, Query);
 	}
 
 	if(g_iPoint[client] >= 60 && g_iPoint[client] < 120)
@@ -450,9 +427,6 @@ public bool UpdateClientLevel(int client)
 	else if(g_iPoint[client] >= 600)
 	{
 		g_iLevel[client] = 10;
-		g_sAuthentication[client] = "资深高玩";
-		FormatEx(Query, sizeof(Query), "UPDATE `Client_Information` SET `Authentication`='%s' WHERE `SteamId`='%s'", g_sAuthentication[client], g_sSteamId[client]);
-		SQL_FastQuery(clientDB, Query);
 	}
 
 	FormatEx(Query, sizeof(Query), "UPDATE `Client_Information` SET `Level`='%d' WHERE `SteamId`='%s'", g_iLevel[client], g_sSteamId[client]);
@@ -461,25 +435,6 @@ public bool UpdateClientLevel(int client)
 		return true;
 	}
 	return false;
-}
-
-public void ClearDisconnectPlayerInfo(int client)
-{
-	g_iPlayerId[client] = 0;
-	g_iPoint[client] = 0;
-	g_iLevel[client] = 0;
-	g_iCurrentPoint[client] = 0;
-	g_sClientName[client] = "null";
-	g_sSteamId[client] = "null";
-	g_sSteam64Id[client] = "null";
-	g_sClientIP[client] = "null";
-	g_sJoinTime[client] = "null";
-	g_sPermissions[client] = "";
-	g_sAuthentication[client] = "null";
-	g_sCountry[client] = "null";
-	g_bWelcome[client] = false;
-	g_bClientAuth[client] = false;
-	g_bDeveloper[client] = false;
 }
 
 //////////////////////////////
