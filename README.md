@@ -42,3 +42,9 @@
 	"port"				"3306"
 }
 ```
+# 扩展部分
+## Module_huds
+### Game_text信息
+![image](https://github.com/Airnoins/Ins.client/assets/90752140/fbfd23a7-fe39-4f96-9113-6f2aedff8d88)
+### 指针信息
+![image](https://github.com/Airnoins/Ins.client/assets/90752140/85a1db21-cdc0-4be0-9c78-972af6cab312)

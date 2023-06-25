@@ -8,7 +8,7 @@
 #define PLUGIN_NAME         "Client - redux(Beta)"
 #define PLUGIN_AUTHOR       "Ins"
 #define PLUGIN_DESCRIPTION  "Client-related features(Only MySql is supported)"
-#define PLUGIN_VERSION      "1.5.2"
+#define PLUGIN_VERSION      "1.5.3"
 #define PLUGIN_URL          "https://space.bilibili.com/442385547"
 
 public Plugin myinfo =
@@ -25,48 +25,17 @@ public Plugin myinfo =
 //          INCLUDES        //
 //////////////////////////////
 #include <sourcemod>
+#include <sdkhooks>
 #include <geoip>
 #include <smutils>
-#include <sdkhooks>
 
-//////////////////////////////
-//          DEFINE          //
-//////////////////////////////
-#define client_DB "Client"
-#define LENGTH_64 64
-#define ONE_MINUTE 60
+//Using DynamicChannels: https://github.com/Vauff/DynamicChannels
+#tryinclude <DynamicChannels>
 
-#define Welcome_Text "\x04▲ 欢迎 ???%N<%d>\x01,\x04加入游戏 - \x03权限等级\x08[\x0B%s\x08] - \x03点数\x08[\x0B%d\x08] - \x03等级Lv.{gold}%d \x08-"
-
-int g_iDBStatus = 0; // 0 - Def., 1 - Reconnect, 2 - Unknown Driver, 3 - Create Table, 4 - Ready to Query
-
-int g_iPlayerId[MAXPLAYERS + 1];
-int g_iPoint[MAXPLAYERS + 1];
-int g_iLevel[MAXPLAYERS + 1];
-
-int g_iCurrentPoint[MAXPLAYERS + 1];
-
-char g_sClientName[MAXPLAYERS + 1][LENGTH_64];
-char g_sSteamId[MAXPLAYERS + 1][LENGTH_64];
-char g_sSteam64Id[MAXPLAYERS + 1][LENGTH_64];
-char g_sClientIP[MAXPLAYERS + 1][LENGTH_64];
-char g_sJoinTime[MAXPLAYERS + 1][LENGTH_64];
-char g_sPermissions[MAXPLAYERS + 1][LENGTH_64];
-char g_sAuthentication[MAXPLAYERS + 1][LENGTH_64];
-char g_sCountry[MAXPLAYERS + 1][16];
-
-bool g_bIsPlayer[MAXPLAYERS + 1] = {false, ...};
-bool g_bClientAuth[MAXPLAYERS + 1] = {false, ...};
-bool g_bDeveloper[MAXPLAYERS + 1] = {false, ...};
-
-char Developer_AuthList[][] = {
-	"超凡贡献", "技术大佬", "Mapper", "Programmer",
-	"root"
-};
-
-Handle Point_Timer = null;
-
-Database clientDB;
+#include "client/function"
+#include "client/database"
+#include "client/module_huds"
+//#include "client/module_cp"
 
 //////////////////////////////
 //          API             //
@@ -83,60 +52,26 @@ public void OnPluginStart()
 
 	HookEventEx("player_connect_full", Event_PlayerConnectFull, EventHookMode_Post);
 
-	if(Point_Timer == null)
-	{
-		Point_Timer = CreateTimer(1.00, Point_TimerCallBack, _, TIMER_REPEAT);
-	}
+	CM_Global_OnPluginStart();
+	CM_Database_OnPluginStart();
 
-	Database.Connect(Client_ConnectCallBack, client_DB);
+	#if defined CM_MODULE_HUDS
+	CM_Huds_OnPluginStart();
+	#endif
+}
+
+public void OnMapStart()
+{
+	CM_Global_OnMapStart();
 }
 
 public void OnClientDisconnect(int client)
 {
 	ChatAll("\x04%N \x01已离开游戏", client);
+	g_bIsPlayer[client] = false;
 
-	//Get client_LastAppeared
-	if(g_iDBStatus == 4)
-	{
-		char Query[256];
-		FormatEx(Query, sizeof(Query), "UPDATE `Client_Information` SET `LastAppeared`=NOW() WHERE `SteamId`='%s'", g_sSteamId[client]);
-		SQL_FastQuery(clientDB, Query);
-
-		UpdateClientLevel(client);
-		g_bIsPlayer[client] = false;
-	}
-}
-
-public void Client_CreateTables()
-{
-	char sConnectDriverDB[16];
-	clientDB.Driver.GetIdentifier(sConnectDriverDB, sizeof(sConnectDriverDB));
-	if(strcmp(sConnectDriverDB, "mysql") == 0)
-	{
-		g_iDBStatus = 3;
-		//Create MySQL Tables
-		char sSQL_Query[1024];
-		Transaction T_CreateTables = SQL_CreateTransaction();
-		FormatEx(sSQL_Query, sizeof(sSQL_Query), "CREATE TABLE IF NOT EXISTS `Client_Information`(		`PlayerId` int(10) NOT NULL AUTO_INCREMENT COMMENT '玩家ID', \
-																										`Name` varchar(32) NOT NULL COMMENT '玩家姓名', \
-																										`SteamId` varchar(32) NOT NULL COMMENT 'AuthId_Steam2', \
-																										`Steam64Id` varchar(32) NOT NULL COMMENT 'AuthId_SteamID64', \
-																										`IP` varchar(32) NOT NULL COMMENT 'IP', \
-																										`Permissions` varchar(16) NOT NULL COMMENT '权限等级', \
-																										`Jointime` datetime NOT NULL COMMENT '注册时间', \
-																										`LastAppeared` datetime NOT NULL COMMENT '最后出现时间', \
-																										`Authentication` varchar(32) NOT NULL COMMENT '认证', \
-																										`Point` int(10) NOT NULL COMMENT '点数', \
-																										`Level` int(10) NOT NULL COMMENT '等级', \
-																										PRIMARY KEY (PlayerId))");
-		T_CreateTables.AddQuery(sSQL_Query);
-		SQL_ExecuteTransaction(clientDB, T_CreateTables, Client_SQLCreateTables_Success, Client_SQLCreateTables_Error, _, DBPrio_High);
-	}
-	else
-	{
-		g_iDBStatus = 2;
-		LogError("[Client DB] Unknown Driver: %s, cannot create tables.", sConnectDriverDB);
-	}
+	UpdateClientLastAppeared(client);
+	UpdateClientLevel(client);
 }
 
 //////////////////////////////
@@ -177,38 +112,8 @@ public Action OnEntitySpawnPost(int client)
 }
 
 //////////////////////////////
-//         TIMER            //
-//////////////////////////////
-
-public Action Point_TimerCallBack(Handle Timer)
-{
-	for(int i = 1; i < MaxClients; i++)
-	{
-		if(!ClientIsValid(i)) continue;
-
-		if(g_iCurrentPoint[i] < ONE_MINUTE)
-		{
-			g_iCurrentPoint[i] += 1;
-			continue;
-		}
-		UpdateClientPoint(i);
-		g_iCurrentPoint[i] = 0;
-	}
-	return Plugin_Continue;
-}
-
-//////////////////////////////
 //         COMMAND          //
 //////////////////////////////
-
-public Action ReConnectDB(Handle Timer)
-{
-	if(g_iDBStatus == 1)
-	{
-		Database.Connect(Client_ConnectCallBack, client_DB);
-	}
-	return Plugin_Stop;
-}
 
 public void SaveClientInfo(int client)
 {
@@ -348,82 +253,4 @@ stock bool IsDeveloper(const char[] Authentication)
 		}
 	}
 	return false;
-}
-
-stock bool IsPlayer(int client)
-{
-	char Query[256];
-	FormatEx(Query, sizeof(Query), "SELECT COUNT(1) FROM `Client_Information` WHERE `SteamId`='%s'", g_sSteamId[client]);
-	DBResultSet rs = SQL_Query(clientDB, Query);
-
-	if(SQL_FetchRow(rs))
-	{
-		if(SQL_FetchInt(rs, 0) != 0)
-		{
-			return true;
-		}
-	}
-	return false;
-}
-
-public bool UpdateClientPoint(int client)
-{
-	char Query[512];
-	FormatEx(Query, sizeof(Query), "UPDATE `Client_Information` SET `Point`=(`Point`+1) WHERE `SteamId`='%s'", g_sSteamId[client]);
-	if(SQL_FastQuery(clientDB, Query))
-	{
-		return true;
-	}
-	return false;
-}
-
-public bool UpdateClientLevel(int client)
-{
-	char Query[512];
-	FormatEx(Query, sizeof(Query), "SELECT `Point`, FLOOR((`Point`/60)) FROM `Client_Information` WHERE `SteamId`='%s'", g_sSteamId[client]);
-	DBResultSet rs = SQL_Query(clientDB, Query);
-
-	while(SQL_FetchRow(rs))
-	{
-		g_iPoint[client] = SQL_FetchInt(rs, 0);
-		g_iLevel[client] = SQL_FetchInt(rs, 1);
-	}
-
-	FormatEx(Query, sizeof(Query), "UPDATE `Client_Information` SET `Level`='%d' WHERE `SteamId`='%s'", g_iLevel[client], g_sSteamId[client]);
-	if(SQL_FastQuery(clientDB, Query))
-	{
-		return true;
-	}
-	return false;
-}
-
-//////////////////////////////
-//         CALLBACK         //
-//////////////////////////////
-
-void Client_ConnectCallBack(Database hDatabase, const char[] sError, any data)
-{
-	if (hDatabase == null)	// Fail Connect
-	{
-		LogError("[Client DB] Database failure: %s, ReConnect after 60 sec", sError);
-		g_iDBStatus = 1; //ReConnect
-		CreateTimer(60.00, ReConnectDB);
-		return;
-	}
-	clientDB = hDatabase;
-	PrintToServer("[Client DB] Successful connection to DB");
-	Client_CreateTables(); // Create Tables
-	clientDB.SetCharset("utf8"); // Set Charset UTF8
-}
-
-void Client_SQLCreateTables_Success(Database hDatabase, any Data, int iNumQueries, Handle[] hResults, any[] QueryData)
-{
-	g_iDBStatus = 4;
-	PrintToServer("[Client DB] DB Ready");
-}
-
-void Client_SQLCreateTables_Error(Database hDatabase, any Data, int iNumQueries, const  char[] sError, int iFailIndex, any[] QueryData)
-{
-	g_iDBStatus = 1;
-	LogError("[Client DB] SQL CreateTables Error: %s", sError);
 }
