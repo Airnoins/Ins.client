@@ -38,7 +38,7 @@ public Plugin myinfo =
 //#include "client/module_cp"
 
 //////////////////////////////
-//          API             //
+//          Forward         //
 //////////////////////////////
 
 public void OnPluginStart()
