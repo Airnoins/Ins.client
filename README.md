@@ -17,7 +17,8 @@
 ## 添加技术认证
 目前仅支持在插件内部修改后重新编译插件<br>
 ![image](https://github.com/Airnoins/Ins.client/assets/90752140/b45f8152-02af-4857-a939-7c6ee5fa0622)<br>
-在此处添加新的认证名称即可
+在此处添加新的认证名称即可<br>
+ps:普通认证直接更改数据库即可
 
 ## 点数+等级计算方式
 
@@ -27,8 +28,7 @@
 ![image](https://github.com/Airnoins/Ins.client/assets/90752140/2e632917-dfeb-48fc-8d73-e4b3cc043ee7)
 
 ## 数据库结构
-![image](https://github.com/Airnoins/Ins.client/assets/90752140/eb8734f8-6571-485f-b02b-5335ecd8b2e0)
-
+![image](https://github.com/Airnoins/Ins.client/assets/90752140/a9bec8f5-e9e7-4d8d-ae05-193d95ac03fd)
 
 ## 数据库配置
 ```
