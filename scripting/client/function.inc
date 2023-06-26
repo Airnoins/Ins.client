@@ -1,6 +1,5 @@
 
 #define LENGTH_64 64
-#define ONE_MINUTE 60
 
 
 //////////////////////////////
@@ -18,8 +17,6 @@ char g_sServerName[32];
 
 int g_iMaxPlayers = 0;
 int g_iCurrentPlayers = 0;
-
-int g_iHUDChannel = 4;
 
 Database clientDB;
 
@@ -78,4 +75,16 @@ stock Action CM_Global_Timer(Handle Timer)
 	}
 
 	return Plugin_Continue;
+}
+
+stock bool IsDeveloper(const char[] Authentication)
+{
+	for(int i = 0; i < sizeof(Developer_AuthList); i++)
+	{
+		if(StrEqual(Authentication, Developer_AuthList[i], false))
+		{
+			return true;
+		}
+	}
+	return false;
 }

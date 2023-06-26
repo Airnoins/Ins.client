@@ -8,7 +8,7 @@
 #define PLUGIN_NAME         "Client - redux(Beta)"
 #define PLUGIN_AUTHOR       "Ins"
 #define PLUGIN_DESCRIPTION  "Client-related features(Only MySql is supported)"
-#define PLUGIN_VERSION      "1.5.3"
+#define PLUGIN_VERSION      "1.5.4"
 #define PLUGIN_URL          "https://space.bilibili.com/442385547"
 
 public Plugin myinfo =
@@ -33,13 +33,24 @@ public Plugin myinfo =
 #tryinclude <DynamicChannels>
 
 #include "client/function"
+#include "client/api"
+#include "client/client"
 #include "client/database"
-#include "client/module_huds"
+
+//#include "client/module_huds"
 //#include "client/module_cp"
+//#include "client/module_auth"
 
 //////////////////////////////
-//          API             //
+//          Forward         //
 //////////////////////////////
+
+public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
+{
+	RegPluginLibrary("Client_Manager");
+	APIClientInit();
+	return APLRes_Success;
+}
 
 public void OnPluginStart()
 {
@@ -60,6 +71,12 @@ public void OnPluginStart()
 	#endif
 }
 
+public void OnClientPutInServer(int client)
+{
+	GetClientAuthId(client, AuthId_Steam2, g_sSteamId[client], LENGTH_64);
+	UpdateClientStatus(client, true);
+}
+
 public void OnMapStart()
 {
 	CM_Global_OnMapStart();
@@ -68,10 +85,13 @@ public void OnMapStart()
 public void OnClientDisconnect(int client)
 {
 	ChatAll("\x04%N \x01已离开游戏", client);
-	g_bIsPlayer[client] = false;
 
 	UpdateClientLastAppeared(client);
+	UpdateClientStatus(client, false);
+	UpdateClientPoint(client);
 	UpdateClientLevel(client);
+
+	g_bIsPlayer[client] = false;
 }
 
 //////////////////////////////
@@ -81,7 +101,6 @@ public void OnClientDisconnect(int client)
 public Action Event_PlayerConnectFull(Event hEvent, const char[] sName, bool bDontBroadcast)
 {
 	int client = GetClientOfUserId(GetEventInt(hEvent, "userid"));
-	GetClientAuthId(client, AuthId_Steam2, g_sSteamId[client], LENGTH_64);
 
 	if(IsPlayer(client))
 	{
@@ -97,16 +116,8 @@ public Action Event_PlayerConnectFull(Event hEvent, const char[] sName, bool bDo
 	}
 	UpdateClientLevel(client);
 	SaveClientInfo(client);
-
-	SDKHook(client, SDKHook_SpawnPost, OnEntitySpawnPost);
-
-	return Plugin_Continue;
-}
-
-public Action OnEntitySpawnPost(int client)
-{
 	ClientWelcome(client);
-	SDKUnhook(client, SDKHook_SpawnPost, OnEntitySpawnPost);
+	ClientWelcome_Console(client);
 
 	return Plugin_Continue;
 }
@@ -118,7 +129,6 @@ public Action OnEntitySpawnPost(int client)
 public void SaveClientInfo(int client)
 {
 	GetClientName(client, g_sClientName[client], LENGTH_64);
-	GetClientAuthId(client, AuthId_Steam2, g_sSteamId[client], LENGTH_64);
 	GetClientAuthId(client, AuthId_SteamID64, g_sSteam64Id[client], LENGTH_64);
 	GetClientIP(client, g_sClientIP[client], LENGTH_64);
 	GeoipCountryEx(g_sClientIP[client], g_sCountry[client], 16, client);
@@ -166,7 +176,7 @@ public void SaveClientInfoDB(int client, bool insert)
 		char Query[512];
 		if(insert)
 		{
-			FormatEx(Query, sizeof(Query), "INSERT INTO `Client_Information` (`Name`, `SteamId`, `Steam64Id`, `IP`, `Permissions`, `Jointime`, `LastAppeared`, `Authentication`, `Point`, `Level`) VALUES ('%s', '%s', '%s', '%s', '%s', NOW(), NOW(), '%s', '%s', '%s')", g_sClientName[client], g_sSteamId[client], g_sSteam64Id[client], g_sClientIP[client], "null", "null", "0", "0");
+			FormatEx(Query, sizeof(Query), "INSERT INTO `Client_Information` (`Name`, `SteamId`, `Steam64Id`, `IP`, `Permissions`, `Jointime`, `LastAppeared`, `Authentication`, `Point`, `Level`, `IsOnline`) VALUES ('%s', '%s', '%s', '%s', '%s', NOW(), NOW(), '%s', '%s', '%s', 1)", g_sClientName[client], g_sSteamId[client], g_sSteam64Id[client], g_sClientIP[client], "null", "null", "0", "0");
 			SQL_FastQuery(clientDB, Query);
 			g_bIsPlayer[client] = true;
 		}
@@ -228,11 +238,25 @@ public void ClientWelcome(int client)
 	SaveClientInfoDB(client, false);
 }
 
+public void ClientWelcome_Console(int client)
+{
+	PrintToConsole(client, "\n\n\n\n\n\n\n\n\n\n");
+	PrintToConsole(client, "===============[Ins.client]==============");
+	PrintToConsole(client, "Server  : %s", g_sServerName);
+	PrintToConsole(client, "Name    : %s", g_sClientName[client]);
+	PrintToConsole(client, "SteamID : %s", g_sSteam64Id[client]);
+	PrintToConsole(client, "Players : %d/%d", g_iCurrentPlayers, g_iMaxPlayers);
+	PrintToConsole(client, "Author  : %s", PLUGIN_AUTHOR);
+	PrintToConsole(client, "Version : %s", PLUGIN_VERSION);
+	PrintToConsole(client, "=========================================");
+	PrintToConsole(client, "\n\n\n");
+}
+
 public Action command_client(int client, int args)
 {
 	if(ClientIsValid(client))
 	{
-		PrintToChat(client, "\x01===========\x08[\x06Ins.client\x08]\x01===========");
+		PrintToChat(client, " \x01===========\x08[\x06Ins.client\x08]\x01===========");
 		PrintToChat(client, " \x04客户端ID\x01 : \x01%s", g_sSteam64Id[client]);
 		PrintToChat(client, " \x04PlayerID\x01 : \x01%d", g_iPlayerId[client]);
 		PrintToChat(client, " \x04AccountID\x01 : \x01%d", GetSteamAccountID(client));
@@ -241,16 +265,4 @@ public Action command_client(int client, int args)
 		PrintToChat(client, " \x04注册时间\x01 : \x01%s", g_sJoinTime[client]);
 	}
 	return Plugin_Handled;
-}
-
-stock bool IsDeveloper(const char[] Authentication)
-{
-	for(int i = 0; i < sizeof(Developer_AuthList); i++)
-	{
-		if(StrEqual(Authentication, Developer_AuthList[i], false))
-		{
-			return true;
-		}
-	}
-	return false;
 }

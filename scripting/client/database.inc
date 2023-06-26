@@ -28,6 +28,7 @@ stock void Client_CreateTables()
 																										`Authentication` varchar(32) NOT NULL COMMENT '认证', \
 																										`Point` int(10) NOT NULL COMMENT '点数', \
 																										`Level` int(10) NOT NULL COMMENT '等级', \
+																										`IsOnline` int(3) NOT NULL COMMENT '1:在线 0:离线', \
 																										PRIMARY KEY (PlayerId))");
 		T_CreateTables.AddQuery(sSQL_Query);
 		SQL_ExecuteTransaction(clientDB, T_CreateTables, Client_SQLCreateTables_Success, Client_SQLCreateTables_Error, _, DBPrio_High);
@@ -56,13 +57,13 @@ public Action Point_TimerCallBack(Handle Timer)
 	{
 		if(!ClientIsValid(i)) continue;
 
-		if(g_iCurrentPoint[i] < ONE_MINUTE)
+		g_iCurrentPoint[i] += 1;
+
+		if(g_iCurrentPoint[i] == 600)
 		{
-			g_iCurrentPoint[i] += 1;
-			continue;
+			UpdateClientPoint(i);
 		}
-		UpdateClientPoint(i);
-		g_iCurrentPoint[i] = 0;
+		continue;
 	}
 	return Plugin_Continue;
 }
@@ -90,9 +91,10 @@ stock bool UpdateClientPoint(int client)
 	if(g_iDBStatus != 4) return false;
 
 	char Query[512];
-	FormatEx(Query, sizeof(Query), "UPDATE `Client_Information` SET `Point`=(`Point`+1) WHERE `SteamId`='%s'", g_sSteamId[client]);
+	FormatEx(Query, sizeof(Query), "UPDATE `Client_Information` SET `Point`=(`Point`+%d) WHERE `SteamId`='%s'", g_iCurrentPoint[client], g_sSteamId[client]);
 	if(SQL_FastQuery(clientDB, Query))
 	{
+		g_iCurrentPoint[client] = 0;
 		return true;
 	}
 	return false;
@@ -126,6 +128,27 @@ stock bool UpdateClientLastAppeared(int client)
 
 	char Query[256];
 	FormatEx(Query, sizeof(Query), "UPDATE `Client_Information` SET `LastAppeared`=NOW() WHERE `SteamId`='%s'", g_sSteamId[client]);
+	if(SQL_FastQuery(clientDB, Query))
+	{
+		return true;
+	}
+	return false;
+}
+
+stock bool UpdateClientStatus(int client, bool online)
+{
+	if(g_iDBStatus != 4) return false;
+
+	char Query[256];
+	if(online)
+	{
+		FormatEx(Query, sizeof(Query), "UPDATE `Client_Information` SET `IsOnline`=1 WHERE `SteamId`='%s'", g_sSteamId[client]);
+	}
+	else
+	{
+		FormatEx(Query, sizeof(Query), "UPDATE `Client_Information` SET `IsOnline`=0 WHERE `SteamId`='%s'", g_sSteamId[client]);
+	}
+	
 	if(SQL_FastQuery(clientDB, Query))
 	{
 		return true;

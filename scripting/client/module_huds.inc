@@ -1,5 +1,7 @@
 #define CM_MODULE_HUDS
 
+int g_iHUDChannel = 4;
+
 public void CM_Huds_OnPluginStart()
 {
 	CreateTimer(1.0, AimHint_Timer, _, TIMER_REPEAT);
