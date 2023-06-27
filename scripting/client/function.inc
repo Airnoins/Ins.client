@@ -28,6 +28,7 @@ int g_iPoint[MAXPLAYERS + 1];
 int g_iLevel[MAXPLAYERS + 1];
 
 int g_iCurrentPoint[MAXPLAYERS + 1];
+int g_iPointTimerCount[MAXPLAYERS + 1];
 
 char g_sClientName[MAXPLAYERS + 1][LENGTH_64];
 char g_sSteamId[MAXPLAYERS + 1][LENGTH_64];

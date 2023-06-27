@@ -57,13 +57,13 @@ public Action Point_TimerCallBack(Handle Timer)
 	{
 		if(!ClientIsValid(i)) continue;
 
-		g_iCurrentPoint[i] += 1;
+		g_iPointTimerCount[i] += 1;
 
-		if(g_iCurrentPoint[i] == 600)
+		if(g_iPointTimerCount[i] == 60)
 		{
-			UpdateClientPoint(i);
+			g_iCurrentPoint[i] += 1;
+			g_iPointTimerCount[i] = 0;
 		}
-		continue;
 	}
 	return Plugin_Continue;
 }
