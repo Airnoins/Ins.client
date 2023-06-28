@@ -92,6 +92,8 @@ public void OnClientDisconnect(int client)
 	UpdateClientLevel(client);
 
 	g_bIsPlayer[client] = false;
+	g_bClientAuth[client] = false;
+	g_bDeveloper[client] = false;
 }
 
 //////////////////////////////
