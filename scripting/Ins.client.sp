@@ -7,8 +7,8 @@
 //////////////////////////////
 #define PLUGIN_NAME         "Client - redux(Beta)"
 #define PLUGIN_AUTHOR       "Ins"
-#define PLUGIN_DESCRIPTION  "Client-related features(Only MySql is supported)"
-#define PLUGIN_VERSION      "1.5.4"
+#define PLUGIN_DESCRIPTION  "Client-related features"
+#define PLUGIN_VERSION      "1.5.5"
 #define PLUGIN_URL          "https://space.bilibili.com/442385547"
 
 public Plugin myinfo =
@@ -22,7 +22,7 @@ public Plugin myinfo =
 
 
 //////////////////////////////
-//          INCLUDES        //
+//          Includes        //
 //////////////////////////////
 #include <sourcemod>
 #include <sdkhooks>
@@ -37,7 +37,8 @@ public Plugin myinfo =
 #include "client/client"
 #include "client/database"
 
-//#include "client/module_huds"
+#include "client/module_huds"
+#include "client/module_move"
 //#include "client/module_cp"
 //#include "client/module_auth"
 
@@ -54,7 +55,7 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 
 public void OnPluginStart()
 {
-	RegConsoleCmd("sm_client", command_client, "Query client information");
+	RegConsoleCmd("sm_client", Command_ClientInfo, "Query client information");
 
 	SMUtils_SetChatPrefix("\x01[\x04Ins.client\x01]");
 	SMUtils_SetChatSpaces("   ");
@@ -73,6 +74,8 @@ public void OnPluginStart()
 
 public void OnClientPutInServer(int client)
 {
+	if(IsFakeClient(client)) return;
+
 	GetClientAuthId(client, AuthId_Steam2, g_sSteamId[client], LENGTH_64);
 	UpdateClientStatus(client, true);
 }
@@ -82,8 +85,17 @@ public void OnMapStart()
 	CM_Global_OnMapStart();
 }
 
+public void OnConfigsExecuted()
+{
+	ConVar convar_name = FindConVar("hostname");
+	GetConVarString(convar_name, g_sServerName, sizeof(g_sServerName)); 
+	CloseHandle(convar_name);
+}
+
 public void OnClientDisconnect(int client)
 {
+	if(IsFakeClient(client)) return;
+
 	ChatAll("\x04%N \x01已离开游戏", client);
 
 	UpdateClientLastAppeared(client);
@@ -96,13 +108,24 @@ public void OnClientDisconnect(int client)
 	g_bDeveloper[client] = false;
 }
 
+public void OnPlayerRunCmdPost(int client, int buttons, int impulse, const float vel[3], const float angles[3], int weapon, int subtype, int cmdnum, int tickcount, int seed, const int mouse[2])
+{
+	if(IsFakeClient(client)) return;
+
+	#if defined CM_MODULE_MOVE
+	CM_Move_PlayerMove(client);
+	#endif
+}
+
 //////////////////////////////
-//         EVENT            //
+//         Event            //
 //////////////////////////////
 
 public Action Event_PlayerConnectFull(Event hEvent, const char[] sName, bool bDontBroadcast)
 {
 	int client = GetClientOfUserId(GetEventInt(hEvent, "userid"));
+
+	if(IsFakeClient(client)) return Plugin_Continue;
 
 	if(IsPlayer(client))
 	{
@@ -125,7 +148,7 @@ public Action Event_PlayerConnectFull(Event hEvent, const char[] sName, bool bDo
 }
 
 //////////////////////////////
-//         COMMAND          //
+//         Command          //
 //////////////////////////////
 
 public void SaveClientInfo(int client)
@@ -254,7 +277,7 @@ public void ClientWelcome_Console(int client)
 	PrintToConsole(client, "\n\n\n");
 }
 
-public Action command_client(int client, int args)
+public Action Command_ClientInfo(int client, int args)
 {
 	if(ClientIsValid(client))
 	{

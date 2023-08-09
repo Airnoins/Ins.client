@@ -54,10 +54,6 @@ stock void CM_Global_OnPluginStart()
 {
 	g_iMaxPlayers = GetMaxHumanPlayers();
 
-	ConVar convar_name = FindConVar("hostname");
-	GetConVarString(convar_name, g_sServerName, sizeof(g_sServerName)); 
-	CloseHandle(convar_name);
-
 	CreateTimer(1.00, CM_Global_Timer, _, TIMER_REPEAT);
 }
 
