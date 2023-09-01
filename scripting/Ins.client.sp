@@ -70,6 +70,10 @@ public void OnPluginStart()
 	#if defined CM_MODULE_HUDS
 	CM_Huds_OnPluginStart();
 	#endif
+
+	#if defined CM_MODULE_MOVE
+	CM_Move_OnPluginStart();
+	#endif
 }
 
 public void OnClientPutInServer(int client)
